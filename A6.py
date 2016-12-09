@@ -134,18 +134,27 @@ pi = np.random.dirichlet(alpha) #(20,)
 mu = np.random.dirichlet(beta,20)#20*20000
 
 for iter in range(n_iter):
-	normalizedProbs = allDocsAsNumpyArrays.map(lambda x : (x[0],getProbs(False, x[1], pi, np.log(mu))))
-	c = normalizedProbs.map(lambda x:(x[0],np.random.choice(n_cluster,1,p = x[1])[0]))
-	c_ravel = np.array(c.flatMap(lambda x:x[1]).collect())
+	##normalized probability. format: (document, countvector,probability vector (20,))
+	normalizedProbs = allDocsAsNumpyArrays.map(lambda x : (x[0],x[1],getProbs(False, x[1], pi, np.log(mu))))
+	##sample class. format: (document, countvector,class)
+	c = normalizedProbs.map(lambda x:(x[0],x[1],np.random.choice(n_cluster,1,p = x[2])[0])) 
+	##ravel classes into an array and count 
+	c_ravel = np.array(c.map(lambda x:x[2]).collect())
 	c_count = np.unique(c_ravel,return_counts = True)[1]
 	temp_alpha = alpha + c_count
-	pi = np.random.dirichlet(temp_alpha)
-	mu = np.zeros(n_cluster,n_words)
+	##update pi
+	new_pi = np.random.dirichlet(temp_alpha)
 
-	####below code not finished
-	haha = class_doc.map(lambda x:(x[1][0],x[1][1])) # get (class, original_count)
+	##update mu
+	new_mu = np.zeros((n_cluster,n_words))
+	##sum of x vectors for each class. format: (class, sum of vectors)
+	cntForEachClass = c.map(lambda x:(x[2],x[1])).reduceByKey (lambda a, b: np.add(a,b))
+	##sample mu
 	for i in range(n_cluster):
-		cnt = class_doc.map(lambda x:x[1][1])
-		mu[i,:] = np.random.dirichlet(beta + cnt)
+		cnt = cntForEachClass.lookup(i)[0]
+		new_mu[i,:] = np.random.dirichlet(beta + cnt)
+	mu = new_mu
+	pi = new_pi
+
 
 
